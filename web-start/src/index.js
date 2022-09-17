@@ -92,7 +92,7 @@ async function saveMessage(messageText) {
       timestamp: serverTimestamp()
     });
   }
-  catch(error) {
+  catch (error) {
     console.error('Error writing new message to Firebase Database', error);
   }
 }
@@ -100,13 +100,13 @@ async function saveMessage(messageText) {
 // Loads chat messages history and listens for upcoming ones.
 function loadMessages() {
   // Create the query to load the last 12 messages and listen for new ones.
-  const recentMessagesQuery = query(collection(getFirestore(), 'messages'), 
+  const recentMessagesQuery = query(collection(getFirestore(), 'messages'),
     orderBy('timestamp', 'desc'), limit(12));
 
   // Start listening to the query.
-  onSnapshot(recentMessagesQuery, function(snapshot) {
-    snapshot.docChanges().forEach(function(change) {
-      if (change.type === 'removed' ) {
+  onSnapshot(recentMessagesQuery, function (snapshot) {
+    snapshot.docChanges().forEach(function (change) {
+      if (change.type === 'removed') {
         deleteMessage(change.doc.id);
       } else {
         const message = change.doc.data();
@@ -126,7 +126,7 @@ async function saveImageMessage(file) {
       name: getUserName(),
       imageUrl: LOADING_IMAGE_URL,
       profilePicUrl: getProfilePicUrl(),
-      timestamp:serverTimestamp()
+      timestamp: serverTimestamp()
     });
 
     // upload the image to Cloud Storage
@@ -138,7 +138,7 @@ async function saveImageMessage(file) {
     const publicImageUrl = await getDownloadURL(newImageRef);
 
     // Update the chat message placeholder with the image's URL
-    await updateDoc(messageRef,{
+    await updateDoc(messageRef, {
       imageUrl: publicImageUrl,
       storageUri: fileSnapshot.metadata.fullPath
     });
@@ -150,12 +150,43 @@ async function saveImageMessage(file) {
 
 // Saves the messaging device token to Cloud Firestore.
 async function saveMessagingDeviceToken() {
-  // TODO 10: Save the device token in Cloud Firestore
+  try {
+    const currentToken = await getToken(getMessaging());
+    if (currentToken) {
+      console.log('Got FCM device token:', currentToken);
+      // Saving the Device Token to Cloud Firestore
+      const tokenRef = doc(getFiresotre(), 'fcmTokens', currentToken);
+      await setDoc(tokenRef, { uid: getAuth().currentUser.uid });
+
+      // This will fire when a message is received while the app is in the foreground.
+      // When the app is in the background, firebase-messaging-sw.js will receive the message instead.
+      onMessage(getMessaging(), (message) => {
+        console.log(
+          'New foreground notification from Firebase Messaging!',
+          message.notification
+        );
+      });
+    } else {
+      // Need to request permissions to show notifications.
+      requestNotificationsPermissions();
+    }
+  } catch(error) {
+    console.error('Unable to get messaging token.', error);
+  };
 }
 
 // Requests permissions to show notifications.
 async function requestNotificationsPermissions() {
-  // TODO 11: Request permissions to send notifications.
+  console.log('Requesting notifications permission...');
+  const permission = await Notification.requestPermission();
+
+  if (permission == 'granted' ) {
+    console.log('Notification permission granted.');
+    //Notification permission granted.
+    await saveMessagingDeviceToken();
+  } else {
+    console.log('Unable to get permission to notify.');
+  }
 }
 
 // Triggered when a file is selected via the media picker.
@@ -400,6 +431,7 @@ const firebaseAppConfig = getFirebaseConfig();
 initializeApp(firebaseAppConfig);
 
 // TODO 12: Initialize Firebase Performance Monitoring
+getPerformance();
 
 initFirebaseAuth();
 loadMessages();
